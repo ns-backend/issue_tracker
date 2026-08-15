@@ -1,0 +1,14 @@
+# Виртуальное окружение
+.venv/
+
+# Python cache
+__pycache__/
+
+# IDE
+.vscode
+.idea/
+*.swp
+*.swo
+
+# Окружение
+.env
