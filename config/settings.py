@@ -16,7 +16,7 @@ def get_required_env(name: str) -> str:
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-7llecfw5**u3s)$f+*apl5he($l0tz*+rt5e^k+^ge(f!yvogs'
+SECRET_KEY = get_required_env('SECRET_KEY')
 
 DEBUG = True
 
