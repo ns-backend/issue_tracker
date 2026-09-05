@@ -28,7 +28,7 @@ class TeamViewSet(viewsets.ModelViewSet):
         team = self.get_object()
 
         if not TeamMembership.objects.filter(user=request.user, team=team).exists():
-            raise PermissionDenied("У вас недостаточно прав для выполнения этого действия")
+            raise PermissionDenied('У вас недостаточно прав для выполнения этого действия')
 
         if request.method == 'GET':
 
@@ -45,18 +45,18 @@ class TeamViewSet(viewsets.ModelViewSet):
             membership = TeamMembership.objects.get(user=request.user, team=team)
 
             if membership.role != TeamMembership.Role.OWNER:
-                raise PermissionDenied("У вас недостаточно прав для выполнения этого действия")
+                raise PermissionDenied('У вас недостаточно прав для выполнения этого действия')
 
             serializer = TeamMembershipSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
             new_role = serializer.validated_data['role']
             if new_role == TeamMembership.Role.OWNER:
-                raise ValidationError("Недопустимое значение роли")
+                raise ValidationError('Недопустимое значение роли')
 
             new_user = serializer.validated_data['user']
             if TeamMembership.objects.filter(user=new_user, team=team).exists():
-                raise ValidationError("Пользователь уже состоит в этой команде")
+                raise ValidationError('Пользователь уже состоит в этой команде')
 
             serializer.save(team=team)
 

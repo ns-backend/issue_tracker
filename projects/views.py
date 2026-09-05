@@ -22,7 +22,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
         membership = TeamMembership.objects.filter(
             user = self.request.user,
-            team=team
+            team = team
         ).first()
 
         if membership is None:
