@@ -4,6 +4,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils import timezone
+from django.db.models import Q
 from teams.models import TeamMembership
 
 from .models import Issue
@@ -14,11 +15,51 @@ class IssueViewSet(viewsets.ModelViewSet):
     serializer_class = IssueSerializer
     permission_classes = [IsAuthenticated]
     allowed_roles = {TeamMembership.Role.OWNER, TeamMembership.Role.MANAGER}
+    allowed_ordering = {
+        'id',
+        '-id',
+        'created_at',
+        '-created_at',
+        'updated_at',
+        '-updated_at',
+        'priority',
+        '-priority'
+        }
 
     def get_queryset(self):
-        return Issue.objects.filter(
+        status = self.request.query_params.get('status')
+        priority = self.request.query_params.get('priority')
+        search = self.request.query_params.get('search')
+        ordering = self.request.query_params.get('ordering')
+
+        queryset = Issue.objects.filter(
             project__team__members = self.request.user
-        ).order_by('id')
+        )
+
+        if status is not None:
+            if status not in Issue.Status.values:
+                raise ValidationError('Недопустимый статус')
+
+            queryset = queryset.filter(status = status)
+
+        if priority is not None:
+            if priority not in Issue.Priority.values:
+                raise ValidationError('Недопустимый приоритет')
+
+            queryset = queryset.filter(priority = priority)
+
+        if search is not None:
+            queryset = queryset.filter(
+                Q(title__icontains=search) | Q(description__icontains=search)
+            )
+
+        if ordering is not None:
+            if ordering not in self.allowed_ordering:
+                raise ValidationError('Недопустимый порядок')
+
+            return queryset.order_by(ordering)
+
+        return queryset.order_by('id')
 
     def perform_create(self, serializer):
         project = serializer.validated_data['project']
