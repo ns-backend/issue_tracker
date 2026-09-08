@@ -3,12 +3,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.utils import timezone
 from django.db.models import Q
 from teams.models import TeamMembership
 
 from .models import Issue
 from .serializers import IssueSerializer
+from .services import change_issue_status
 
 
 class IssueViewSet(viewsets.ModelViewSet):
@@ -135,33 +135,8 @@ class IssueViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied('У вас недостаточно прав для смены статуса задачи')
 
         new_status = request.data.get('status')
-        allowed_transitions = {
-            Issue.Status.NEW: {Issue.Status.IN_PROGRESS},
-            Issue.Status.IN_PROGRESS: {Issue.Status.NEW, Issue.Status.DONE},
-            Issue.Status.DONE: {Issue.Status.IN_PROGRESS}
-        }
 
-        if new_status not in Issue.Status.values:
-            raise ValidationError('Недопустимый статус')
-
-        if new_status not in allowed_transitions[issue.status]:
-            raise ValidationError('Недопустимый переход статуса')
-
-        if (
-            issue.status == Issue.Status.NEW
-            and new_status == Issue.Status.IN_PROGRESS
-            and issue.started_at is None
-            ):
-            issue.started_at = timezone.now()
-
-        elif issue.status == Issue.Status.IN_PROGRESS and new_status == Issue.Status.DONE:
-            issue.completed_at = timezone.now()
-
-        elif issue.status == Issue.Status.DONE and new_status == Issue.Status.IN_PROGRESS:
-            issue.completed_at = None
-
-        issue.status = new_status
-        issue.save()
+        issue = change_issue_status(issue=issue, new_status=new_status)
 
         serializer = self.get_serializer(issue)
         return Response(serializer.data)
