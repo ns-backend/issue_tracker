@@ -4,7 +4,10 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
+from django.db import transaction
 from teams.models import TeamMembership
+from history.models import IssueHistory
+from history.serializers import IssueHistorySerializer
 
 from .models import Issue
 from .serializers import IssueSerializer
@@ -75,7 +78,7 @@ class IssueViewSet(viewsets.ModelViewSet):
         serializer.save(creator=self.request.user)
 
     def perform_update(self, serializer):
-        issue = self.get_object()
+        issue = serializer.instance
         team = issue.project.team
 
         membership = TeamMembership.objects.filter(
@@ -86,15 +89,44 @@ class IssueViewSet(viewsets.ModelViewSet):
         if membership is None:
             raise PermissionDenied('Вы не состоите в этой команде')
 
-        if membership.role in self.allowed_roles:
-            serializer.save()
-            return
+        if (
+            membership.role not in self.allowed_roles
+            and membership.role != TeamMembership.Role.MEMBER
+            ):
+            raise PermissionDenied('У вас недостаточно прав для обновления задачи')
 
         if membership.role == TeamMembership.Role.MEMBER:
             if self.request.user != issue.creator and self.request.user != issue.assignee:
                 raise PermissionDenied('У вас недостаточно прав для обновления задачи')
 
-        serializer.save()
+        tracked_fields = {
+            'title': 'title',
+            'description': 'description',
+            'priority': 'priority',
+            'assignee': 'assignee_id'
+        }
+
+        old_values = {}
+
+        for field, attribute in tracked_fields.items():
+            old_values[field] = getattr(issue, attribute)
+
+        with transaction.atomic():
+            updated_issue = serializer.save()
+
+            for field, attribute in tracked_fields.items():
+                old_value = old_values[field]
+                new_value = getattr(updated_issue, attribute)
+
+                if old_value != new_value:
+                    IssueHistory.objects.create(
+                        issue = updated_issue,
+                        user = self.request.user,
+                        field = field,
+                        old_value = old_value,
+                        new_value = new_value
+                    )
+
 
     def perform_destroy(self, instance):
         team = instance.project.team
@@ -136,7 +168,19 @@ class IssueViewSet(viewsets.ModelViewSet):
 
         new_status = request.data.get('status')
 
-        issue = change_issue_status(issue=issue, new_status=new_status)
+        issue = change_issue_status(issue=issue, new_status=new_status, user=request.user)
 
         serializer = self.get_serializer(issue)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    def history(self, request, pk=None):
+        issue = self.get_object()
+        history = issue.history.all()
+
+        serializer = IssueHistorySerializer(
+            history,
+            many = True
+        )
+
         return Response(serializer.data)
