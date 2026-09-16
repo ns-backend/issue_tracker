@@ -6,6 +6,7 @@ from issues.models import Issue
 from projects.models import Project
 from users.models import User
 from teams.models import TeamMembership, Team
+from history.models import IssueHistory
 
 
 class IssuePermissionTests(APITestCase):
@@ -330,6 +331,7 @@ class IssueStatusTests(APITestCase):
             project = self.backend_project,
             creator = self.tanya,
             status = Issue.Status.DONE,
+            started_at = timezone.now(),
             completed_at = timezone.now()
         )
 
@@ -362,6 +364,11 @@ class IssueStatusTests(APITestCase):
             project=self.backend_project,
             creator=self.tanya,
             assignee=self.roma,
+        )
+
+        self.alex = User.objects.create_user(
+            username = 'alex',
+            password = '12345'
         )
 
         self.foreign_new_issue = Issue.objects.create(
@@ -703,3 +710,130 @@ class IssueStatusTests(APITestCase):
             Issue.Status.IN_PROGRESS
         )
         self.assertIsNotNone(self.roma_new_issue.started_at)
+
+    def test_audit_history_created_when_status_changed(self):
+        self.client.force_authenticate(user=self.tanya)
+
+        data = {
+            'status': Issue.Status.IN_PROGRESS
+        }
+
+        url = reverse(
+            'issue-change-status',
+            args=[self.new_issue.id]
+        )
+
+        response = self.client.post(
+            url,
+            data,
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        history_qs = IssueHistory.objects.filter(
+            issue=self.new_issue,
+            field='status'
+        )
+        self.assertEqual(history_qs.count(), 1)
+
+        history = history_qs.get()
+
+        self.assertEqual(history.field, 'status')
+        self.assertEqual(history.old_value, Issue.Status.NEW)
+        self.assertEqual(history.new_value, Issue.Status.IN_PROGRESS)
+        self.assertEqual(history.user, self.tanya)
+        self.assertEqual(history.issue, self.new_issue)
+
+    def test_audit_history_is_not_created_when_status_is_not_changed(self):
+        self.client.force_authenticate(user=self.tanya)
+
+        data = {
+            'status': Issue.Status.DONE
+        }
+
+        url = reverse(
+            'issue-change-status',
+            args=[self.new_issue.id]
+        )
+
+        response = self.client.post(
+            url,
+            data,
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        self.new_issue.refresh_from_db()
+        self.assertEqual(
+            self.new_issue.status,
+            Issue.Status.NEW
+        )
+        self.assertFalse(
+            IssueHistory.objects.filter(
+                issue=self.new_issue,
+                field='status'
+            ).exists()
+        )
+
+    def test_when_done_become_in_progres_started_at_is_the_same(self):
+        self.client.force_authenticate(user=self.tanya)
+
+        old_started_at = self.done_issue.started_at
+
+        data = {
+            'status': Issue.Status.IN_PROGRESS
+        }
+
+        url = reverse(
+            'issue-change-status',
+            args=[self.done_issue.id]
+        )
+
+        response = self.client.post(
+            url,
+            data,
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.done_issue.refresh_from_db()
+
+        self.assertEqual(
+            self.done_issue.status,
+            Issue.Status.IN_PROGRESS
+        )
+        self.assertEqual(
+            old_started_at,
+            self.done_issue.started_at
+        )
+        self.assertIsNone(self.done_issue.completed_at)
+
+    def test_outsider_cannot_change_status_issue_in_another_team_projects_issue(self):
+        self.client.force_authenticate(user=self.alex)
+
+        data = {
+            'status': Issue.Status.IN_PROGRESS
+        }
+
+        url = reverse(
+            'issue-change-status',
+            args=[self.new_issue.id]
+        )
+
+        response = self.client.post(
+            url,
+            data,
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+        self.new_issue.refresh_from_db()
+
+        self.assertEqual(
+            self.new_issue.status,
+            Issue.Status.NEW
+        )
