@@ -837,3 +837,357 @@ class IssueStatusTests(APITestCase):
             self.new_issue.status,
             Issue.Status.NEW
         )
+
+
+class IssueAuditTests(APITestCase):
+    def setUp(self):
+        self.tanya = User.objects.create_user(
+            username = 'tanya',
+            password = '12345'
+        )
+        self.backend_team = Team.objects.create(
+            name = 'backend'
+        )
+        self.tanya_membership = TeamMembership.objects.create(
+            user = self.tanya,
+            team = self.backend_team,
+            role = TeamMembership.Role.OWNER
+        )
+        self.backend_project = Project.objects.create(
+            name = 'Existing project',
+            description = 'Test project',
+            team = self.backend_team
+        )
+        self.new_issue = Issue.objects.create(
+            title = 'Issue audit test',
+            project = self.backend_project,
+            creator = self.tanya
+        )
+
+        self.roma = User.objects.create_user(
+            username='roma',
+            password='12345'
+        )
+        self.roma_membership = TeamMembership.objects.create(
+            user=self.roma,
+            team=self.backend_team,
+            role=TeamMembership.Role.MEMBER
+        )
+
+        self.alex = User.objects.create_user(
+            username = 'alex',
+            password = '12345'
+        )
+
+    def test_issue_audit_created_when_issues_title_changed(self):
+        self.client.force_authenticate(user=self.tanya)
+
+        data = {
+            'title': 'Issue audit test 2'
+        }
+
+        url = reverse(
+            'issue-detail',
+            args=[self.new_issue.id]
+        )
+
+        response = self.client.patch(
+            url,
+            data,
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.new_issue.refresh_from_db()
+
+        self.assertEqual(
+            self.new_issue.title,
+            'Issue audit test 2'
+        )
+
+        history_qs = IssueHistory.objects.filter(
+            issue=self.new_issue,
+            field='title'
+        )
+        self.assertEqual(history_qs.count(), 1)
+
+        history = history_qs.get()
+
+        self.assertEqual(history.field, 'title')
+        self.assertEqual(history.old_value, 'Issue audit test')
+        self.assertEqual(history.new_value, 'Issue audit test 2')
+        self.assertEqual(history.user, self.tanya)
+        self.assertEqual(history.issue, self.new_issue)
+
+    def test_issue_audit_created_when_issues_priority_changed(self):
+        self.client.force_authenticate(user=self.tanya)
+
+        data = {
+            'priority': Issue.Priority.HIGH
+        }
+
+        url = reverse(
+            'issue-detail',
+            args=[self.new_issue.id]
+        )
+
+        response = self.client.patch(
+            url,
+            data,
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.new_issue.refresh_from_db()
+
+        self.assertEqual(
+            self.new_issue.priority,
+            Issue.Priority.HIGH
+        )
+
+        history_qs = IssueHistory.objects.filter(
+            issue=self.new_issue,
+            field='priority'
+        )
+        self.assertEqual(history_qs.count(), 1)
+
+        history = history_qs.get()
+
+        self.assertEqual(history.field, 'priority')
+        self.assertEqual(history.old_value, Issue.Priority.MEDIUM)
+        self.assertEqual(history.new_value, Issue.Priority.HIGH)
+        self.assertEqual(history.user, self.tanya)
+        self.assertEqual(history.issue, self.new_issue)
+
+    def test_issue_audit_created_when_issues_assignee_changed(self):
+        self.client.force_authenticate(user=self.tanya)
+
+        data = {
+            'assignee': self.roma.id
+        }
+
+        url = reverse(
+            'issue-detail',
+            args=[self.new_issue.id]
+        )
+
+        response = self.client.patch(
+            url,
+            data,
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.new_issue.refresh_from_db()
+
+        self.assertEqual(
+            self.new_issue.assignee,
+            self.roma
+        )
+
+        history_qs = IssueHistory.objects.filter(
+            issue=self.new_issue,
+            field='assignee'
+        )
+        self.assertEqual(history_qs.count(), 1)
+
+        history = history_qs.get()
+
+        self.assertEqual(history.field, 'assignee')
+        self.assertEqual(history.old_value, None)
+        self.assertEqual(history.new_value, str(self.roma.id))
+        self.assertEqual(history.user, self.tanya)
+        self.assertEqual(history.issue, self.new_issue)
+
+    def test_modifying_multiple_fields_at_once_create_multiple_issue_audits(self):
+        self.client.force_authenticate(user=self.tanya)
+
+        data = {
+            'title': 'Issue audit test 2',
+            'priority': Issue.Priority.HIGH,
+            'assignee': self.roma.id
+        }
+
+        url = reverse(
+            'issue-detail',
+            args=[self.new_issue.id]
+        )
+
+        response = self.client.patch(
+            url,
+            data,
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.new_issue.refresh_from_db()
+
+        self.assertEqual(
+            self.new_issue.title,
+            'Issue audit test 2'
+        )
+        self.assertEqual(
+            self.new_issue.priority,
+            Issue.Priority.HIGH
+        )
+        self.assertEqual(
+            self.new_issue.assignee,
+            self.roma
+        )
+
+        history_qs = IssueHistory.objects.filter(
+            issue=self.new_issue,
+        )
+        self.assertEqual(history_qs.count(), 3)
+
+        fields = set(
+            history_qs.values_list(
+                'field',
+                flat=True
+            )
+        )
+        self.assertEqual(
+            fields,
+            {'title', 'priority', 'assignee'}
+        )
+
+        title_history = history_qs.get(field='title')
+        priority_history = history_qs.get(field='priority')
+        assignee_history = history_qs.get(field='assignee')
+
+        self.assertEqual(
+            title_history.old_value,
+            'Issue audit test'
+        )
+        self.assertEqual(
+            title_history.new_value,
+            'Issue audit test 2'
+        )
+
+        self.assertEqual(
+            priority_history.old_value,
+            Issue.Priority.MEDIUM
+        )
+        self.assertEqual(
+            priority_history.new_value,
+            Issue.Priority.HIGH
+        )
+
+        self.assertIsNone(
+            assignee_history.old_value
+        )
+        self.assertEqual(
+            assignee_history.new_value,
+            str(self.roma.id)
+        )
+
+    def test_if_field_not_changed_issue_audit_should_not_be_created(self):
+        self.client.force_authenticate(user=self.tanya)
+
+        data = {
+            'priority': Issue.Priority.MEDIUM
+        }
+
+        url = reverse(
+            'issue-detail',
+            args=[self.new_issue.id]
+        )
+
+        response = self.client.patch(
+            url,
+            data,
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.new_issue.refresh_from_db()
+
+        self.assertEqual(
+            self.new_issue.priority,
+            Issue.Priority.MEDIUM
+        )
+
+        history_qs = IssueHistory.objects.filter(
+            issue=self.new_issue,
+            field='priority'
+        )
+        self.assertEqual(history_qs.count(), 0)
+
+    def test_issue_audit_created_when_issues_description_changed(self):
+        self.client.force_authenticate(user=self.tanya)
+
+        data = {
+            'description': 'Not empty now'
+        }
+
+        url = reverse(
+            'issue-detail',
+            args=[self.new_issue.id]
+        )
+
+        response = self.client.patch(
+            url,
+            data,
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.new_issue.refresh_from_db()
+
+        self.assertEqual(
+            self.new_issue.description,
+            'Not empty now'
+        )
+
+        history_qs = IssueHistory.objects.filter(
+            issue=self.new_issue,
+            field='description'
+        )
+        self.assertEqual(history_qs.count(), 1)
+
+        history = history_qs.get()
+
+        self.assertEqual(history.field, 'description')
+        self.assertEqual(history.old_value, '')
+        self.assertEqual(history.new_value, 'Not empty now')
+        self.assertEqual(history.user, self.tanya)
+        self.assertEqual(history.issue, self.new_issue)
+
+    def test_any_team_member_can_get_issues_history(self):
+        IssueHistory.objects.create(
+            issue = self.new_issue,
+            user = self.tanya,
+            field = 'title',
+            old_value = 'old',
+            new_value = 'new'
+        )
+
+        self.client.force_authenticate(user=self.roma)
+
+        url = reverse(
+            'issue-history',
+            args=[self.new_issue.id]
+        )
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+
+    def test_outsider_cannot_get_issues_history_of_another_team(self):
+        self.client.force_authenticate(user=self.alex)
+
+        url = reverse(
+            'issue-history',
+            args=[self.new_issue.id]
+        )
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 404)
