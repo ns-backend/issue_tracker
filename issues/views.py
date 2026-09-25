@@ -12,6 +12,7 @@ from history.serializers import IssueHistorySerializer
 from .models import Issue
 from .serializers import IssueSerializer
 from .services import change_issue_status
+from .tasks import notify_issue_created
 
 
 class IssueViewSet(viewsets.ModelViewSet):
@@ -75,7 +76,12 @@ class IssueViewSet(viewsets.ModelViewSet):
         if membership is None:
             raise PermissionDenied('Чтобы создать задачу, вам нужно состоять в этой команде')
 
-        serializer.save(creator=self.request.user)
+        with transaction.atomic():
+            issue = serializer.save(creator=self.request.user)
+
+            transaction.on_commit(
+                lambda: notify_issue_created.delay(issue.id)
+            )
 
     def perform_update(self, serializer):
         issue = serializer.instance
