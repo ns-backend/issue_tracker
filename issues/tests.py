@@ -1,6 +1,7 @@
 from rest_framework.test import APITestCase
 from django.urls import reverse
 from django.utils import timezone
+from unittest.mock import patch
 
 from issues.models import Issue
 from projects.models import Project
@@ -293,6 +294,38 @@ class IssuePermissionTests(APITestCase):
 
         self.foreign_issue.refresh_from_db()
         self.assertEqual(self.foreign_issue.assignee, self.tanya)
+
+    def test_when_issue_successfully_created_task_about_it_going_to_redis(self):
+        self.client.force_authenticate(user=self.roma)
+
+        data = {
+            'title': 'Backend projects issue',
+            'description': 'Test issue',
+            'project': self.backend_project.id
+        }
+
+        url = reverse('issue-list')
+
+        with patch("issues.views.notify_issue_created.delay") as mocked_delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post(
+                    url,
+                    data,
+                    format='json'
+                )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            Issue.objects.filter(
+                title='Backend projects issue',
+                project=self.backend_project
+            ).exists()
+        )
+
+        issue = Issue.objects.get(title='Backend projects issue')
+        self.assertEqual(issue.creator, self.roma)
+
+        mocked_delay.assert_called_once_with(issue.id)
 
 
 class IssueStatusTests(APITestCase):
