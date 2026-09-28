@@ -1,35 +1,35 @@
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import IsAuthenticated
+
+from teams.models import TeamMembership
 
 from .models import Project
 from .serializers import ProjectSerializer
-from teams.models import TeamMembership
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
-    permission_classes = [IsAuthenticated]
-    allowed_roles = {TeamMembership.Role.OWNER, TeamMembership.Role.MANAGER}
+    permission_classes = (IsAuthenticated,)
+    allowed_roles = frozenset({TeamMembership.Role.OWNER, TeamMembership.Role.MANAGER})
 
     def get_queryset(self):
         return Project.objects.filter(
-            team__members = self.request.user,
-        ).order_by('id')
+            team__members=self.request.user,
+        ).order_by("id")
 
     def perform_create(self, serializer):
-        team = serializer.validated_data['team']
+        team = serializer.validated_data["team"]
 
         membership = TeamMembership.objects.filter(
-            user = self.request.user,
-            team = team
+            user=self.request.user, team=team
         ).first()
 
         if membership is None:
-            raise PermissionDenied('Вы не состоите в этой команде')
+            raise PermissionDenied("Вы не состоите в этой команде")
 
         if membership.role not in self.allowed_roles:
-            raise PermissionDenied('У вас недостаточно прав для создания проекта')
+            raise PermissionDenied("У вас недостаточно прав для создания проекта")
 
         serializer.save()
 
@@ -38,15 +38,14 @@ class ProjectViewSet(viewsets.ModelViewSet):
         team = project.team
 
         membership = TeamMembership.objects.filter(
-            user = self.request.user,
-            team=team
+            user=self.request.user, team=team
         ).first()
 
         if membership is None:
-            raise PermissionDenied('Вы не состоите в этой команде')
+            raise PermissionDenied("Вы не состоите в этой команде")
 
         if membership.role not in self.allowed_roles:
-            raise PermissionDenied('У вас недостаточно прав для обновления проекта')
+            raise PermissionDenied("У вас недостаточно прав для обновления проекта")
 
         serializer.save()
 
@@ -54,14 +53,13 @@ class ProjectViewSet(viewsets.ModelViewSet):
         team = instance.team
 
         membership = TeamMembership.objects.filter(
-            user = self.request.user,
-            team=team
+            user=self.request.user, team=team
         ).first()
 
         if membership is None:
-            raise PermissionDenied('Вы не состоите в этой команде')
+            raise PermissionDenied("Вы не состоите в этой команде")
 
         if membership.role not in self.allowed_roles:
-            raise PermissionDenied('У вас недостаточно прав для удаления проекта')
+            raise PermissionDenied("У вас недостаточно прав для удаления проекта")
 
         instance.delete()
