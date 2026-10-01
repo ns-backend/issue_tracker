@@ -1,6 +1,8 @@
 # Team Issue Tracker API
 
-Учебный backend-проект на Django REST Framework — REST API для работы с командами, проектами, задачами и комментариями.
+[![CI](https://github.com/ns-backend/issue_tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/ns-backend/issue_tracker/actions/workflows/ci.yml)
+
+REST API для работы с командами, проектами, задачами и комментариями.
 
 Проект делался с упором не только на CRUD, но и на бизнес-логику: роли внутри команды, ограничения доступа, жизненный цикл задач, audit log, фоновые задачи через Celery, Docker и CI.
 
