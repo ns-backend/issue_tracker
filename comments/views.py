@@ -9,6 +9,7 @@ from .serializers import CommentSerializer
 
 
 class CommentViewSet(viewsets.ModelViewSet):
+    queryset = Comment.objects.all()
     serializer_class = CommentSerializer
     permission_classes = (IsAuthenticated,)
     allowed_roles = frozenset({TeamMembership.Role.OWNER, TeamMembership.Role.MANAGER})

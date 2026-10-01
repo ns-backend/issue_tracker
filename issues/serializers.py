@@ -63,3 +63,7 @@ class IssueSerializer(serializers.ModelSerializer):
             raise ValidationError("Нельзя изменить проект у задачи")
 
         return value
+
+
+class ChangeIssueStatusSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=Issue.Status.choices)

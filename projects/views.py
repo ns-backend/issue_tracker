@@ -9,6 +9,7 @@ from .serializers import ProjectSerializer
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
+    queryset = Project.objects.all()
     serializer_class = ProjectSerializer
     permission_classes = (IsAuthenticated,)
     allowed_roles = frozenset({TeamMembership.Role.OWNER, TeamMembership.Role.MANAGER})

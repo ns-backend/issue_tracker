@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.db.models import Q
+from drf_spectacular.utils import extend_schema
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -11,12 +12,13 @@ from history.serializers import IssueHistorySerializer
 from teams.models import TeamMembership
 
 from .models import Issue
-from .serializers import IssueSerializer
+from .serializers import ChangeIssueStatusSerializer, IssueSerializer
 from .services import change_issue_status
 from .tasks import notify_issue_created
 
 
 class IssueViewSet(viewsets.ModelViewSet):
+    queryset = Issue.objects.all()
     serializer_class = IssueSerializer
     permission_classes = (IsAuthenticated,)
     allowed_roles = frozenset({TeamMembership.Role.OWNER, TeamMembership.Role.MANAGER})
@@ -150,6 +152,7 @@ class IssueViewSet(viewsets.ModelViewSet):
 
         instance.delete()
 
+    @extend_schema(request=ChangeIssueStatusSerializer, responses=IssueSerializer)
     @action(detail=True, methods=["post"], url_path="change-status")
     def change_status(self, request, pk=None):
         issue = self.get_object()
@@ -184,6 +187,7 @@ class IssueViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(issue)
         return Response(serializer.data)
 
+    @extend_schema(responses=IssueHistorySerializer(many=True))
     @action(detail=True, methods=["get"])
     def history(self, request, pk=None):
         issue = self.get_object()

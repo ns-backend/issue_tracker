@@ -1,5 +1,6 @@
 from django.db import transaction
-from rest_framework import status, viewsets
+from drf_spectacular.utils import extend_schema
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -9,7 +10,11 @@ from .models import Team, TeamMembership
 from .serializers import TeamMembershipSerializer, TeamSerializer
 
 
-class TeamViewSet(viewsets.ModelViewSet):
+class TeamViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
     queryset = Team.objects.all().order_by("id")
     serializer_class = TeamSerializer
     permission_classes = (IsAuthenticated,)
@@ -21,6 +26,15 @@ class TeamViewSet(viewsets.ModelViewSet):
                 user=self.request.user, team=team, role=TeamMembership.Role.OWNER
             )
 
+    @extend_schema(
+        methods=["GET"],
+        responses=TeamMembershipSerializer(many=True),
+    )
+    @extend_schema(
+        methods=["POST"],
+        request=TeamMembershipSerializer,
+        responses={201: TeamMembershipSerializer},
+    )
     @action(detail=True, methods=["get", "post"])
     def members(self, request, pk=None):
         team = self.get_object()
